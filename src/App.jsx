@@ -1,6 +1,11 @@
 import { useState } from "react";
 import "./App.css";
 
+const ADMIN_PASSWORD = "quickdocs2026"; // change this to your own secret
+
+const WHATSAPP_NUMBER = "250735958276"; // 0735958276 in international format
+const MOMO_DISPLAY = "0791 667 329";     // shown to customers as-is
+
 const DOC_TYPES = [
   { key: "cv", label: "CV", group: "resume", price: 1000, blurb: "Professional CV for job applications" },
   { key: "studentcv", label: "Student CV", group: "resume", price: 800, blurb: "For internships & first jobs" },
@@ -19,10 +24,13 @@ function emptyForm() {
 }
 
 export default function App() {
-  const [view, setView] = useState("customer"); // customer | admin
-  const [step, setStep] = useState("select"); // select | build
+  const isAdminUrl = typeof window !== "undefined" && window.location.search.includes("admin=1");
+  const [adminUnlocked, setAdminUnlocked] = useState(false);
+  const [adminPasswordInput, setAdminPasswordInput] = useState("");
+
+  const [step, setStep] = useState("select");
   const [docType, setDocType] = useState(null);
-  const [template, setTemplate] = useState("classic"); // classic | modern
+  const [template, setTemplate] = useState("classic");
   const [f, setF] = useState(emptyForm());
   const [ref, setRef] = useState("");
   const [orders, setOrders] = useState([]);
@@ -58,10 +66,42 @@ export default function App() {
     setOrders(orders.map((o) => (o.id === id ? { ...o, status: "approved" } : o)));
   }
 
-  if (view === "admin") {
+  if (isAdminUrl && !adminUnlocked) {
     return (
       <div className="page">
-        <TopBar view={view} setView={setView} />
+        <main className="admin-login">
+          <h2>Admin sign-in</h2>
+          <p className="lede">Enter your password to view and approve orders.</p>
+          <input
+            type="password"
+            value={adminPasswordInput}
+            onChange={(e) => setAdminPasswordInput(e.target.value)}
+            placeholder="Password"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                if (adminPasswordInput === ADMIN_PASSWORD) setAdminUnlocked(true);
+                else alert("Wrong password");
+              }
+            }}
+          />
+          <button
+            className="primary"
+            onClick={() => {
+              if (adminPasswordInput === ADMIN_PASSWORD) setAdminUnlocked(true);
+              else alert("Wrong password");
+            }}
+          >
+            Sign in
+          </button>
+        </main>
+      </div>
+    );
+  }
+
+  if (isAdminUrl && adminUnlocked) {
+    return (
+      <div className="page">
+        <TopBar />
         <main className="admin">
           <h2>Orders</h2>
           <p className="lede">Check the payment reference against your MoMo/Airtel statement before approving.</p>
@@ -91,7 +131,7 @@ export default function App() {
   if (step === "select") {
     return (
       <div className="page">
-        <TopBar view={view} setView={setView} />
+        <TopBar />
         <main className="select">
           <h2>What do you need today?</h2>
           <p className="lede">Pick one — you'll fill a short form and see it build live.</p>
@@ -113,7 +153,7 @@ export default function App() {
 
   return (
     <div className="page">
-      <TopBar view={view} setView={setView} />
+      <TopBar />
       <main className="layout wide">
         <section className="panel">
           <button className="back" onClick={() => setStep("select")}>&larr; Change document type</button>
@@ -189,7 +229,7 @@ export default function App() {
             <div className="pay-box">
               <p className="pay-instructions">
                 Send <strong>{doc.price} RWF</strong> via <strong>MTN Mobile Money</strong> or <strong>Airtel Money</strong> to
-                <strong> 0791667329</strong>, then paste the confirmation code you received below.
+                <strong> {MOMO_DISPLAY}</strong>, then paste the confirmation code you received below.
               </p>
               <input value={ref} onChange={(e) => setRef(e.target.value)} placeholder="e.g. MP240912.1900.A12345" />
               <button className="primary" onClick={submitPayment}>I've paid — submit reference</button>
@@ -246,7 +286,7 @@ export default function App() {
   );
 }
 
-function TopBar({ view, setView }) {
+function TopBar() {
   return (
     <header className="topbar">
       <div className="brand">
@@ -254,10 +294,7 @@ function TopBar({ view, setView }) {
         <div><h1>QuickDocs Rwanda</h1><span>Build a document in minutes</span></div>
       </div>
       <div className="topbar-right">
-        <button className="link" onClick={() => setView(view === "admin" ? "customer" : "admin")}>
-          {view === "admin" ? "Back to app" : "Admin"}
-        </button>
-        <a className="help" href="https://wa.me/250735958276" target="_blank" rel="noreferrer">WhatsApp help</a>
+        <a className="help" href={`https://wa.me/${WHATSAPP_NUMBER}`} target="_blank" rel="noreferrer">WhatsApp help</a>
       </div>
     </header>
   );
