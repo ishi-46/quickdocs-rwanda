@@ -189,7 +189,7 @@ export default function App() {
             <div className="pay-box">
               <p className="pay-instructions">
                 Send <strong>{doc.price} RWF</strong> via <strong>MTN Mobile Money</strong> or <strong>Airtel Money</strong> to
-                <strong> 078 000 0000</strong>, then paste the confirmation code you received below.
+                <strong> 0791667329</strong>, then paste the confirmation code you received below.
               </p>
               <input value={ref} onChange={(e) => setRef(e.target.value)} placeholder="e.g. MP240912.1900.A12345" />
               <button className="primary" onClick={submitPayment}>I've paid — submit reference</button>
@@ -257,7 +257,7 @@ function TopBar({ view, setView }) {
         <button className="link" onClick={() => setView(view === "admin" ? "customer" : "admin")}>
           {view === "admin" ? "Back to app" : "Admin"}
         </button>
-        <a className="help" href="https://wa.me/250700000000" target="_blank" rel="noreferrer">WhatsApp help</a>
+        <a className="help" href="https://wa.me/250735958276" target="_blank" rel="noreferrer">WhatsApp help</a>
       </div>
     </header>
   );
