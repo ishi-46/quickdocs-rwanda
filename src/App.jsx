@@ -1,10 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { db } from "./firebase";
+import {
+  collection, addDoc, doc, updateDoc, onSnapshot,
+  query, where, getDocs, serverTimestamp,
+} from "firebase/firestore";
 import "./App.css";
 
 const ADMIN_PASSWORD = "quickdocs2026"; // change this to your own secret
 
-const WHATSAPP_NUMBER = "250735958276"; // 0735958276 in international format
-const MOMO_DISPLAY = "0791 667 329";     // shown to customers as-is
+const WHATSAPP_NUMBER = "250735958276";
+const MOMO_DISPLAY = "0791 667 329";
 
 const DOC_TYPES = [
   { key: "cv", label: "CV", group: "resume", price: 1000, blurb: "Professional CV for job applications" },
@@ -33,37 +38,85 @@ export default function App() {
   const [template, setTemplate] = useState("classic");
   const [f, setF] = useState(emptyForm());
   const [ref, setRef] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
   const [orders, setOrders] = useState([]);
   const [currentOrderId, setCurrentOrderId] = useState(null);
+  const [currentOrder, setCurrentOrder] = useState(null);
   const [showTerms, setShowTerms] = useState(false);
 
-  const doc = DOC_TYPES.find((d) => d.key === docType);
-  const currentOrder = orders.find((o) => o.id === currentOrderId);
+  const doc_ = DOC_TYPES.find((d) => d.key === docType);
   const isApproved = currentOrder?.status === "approved";
 
   const update = (key) => (e) => setF({ ...f, [key]: e.target.value });
   const show = (val, fallback) => (val && val.trim() ? val : fallback);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("qd_current_order");
+    if (saved) {
+      try {
+        const { id, docType: savedDocType } = JSON.parse(saved);
+        setDocType(savedDocType);
+        setCurrentOrderId(id);
+        setStep("build");
+      } catch {
+        localStorage.removeItem("qd_current_order");
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!currentOrderId) { setCurrentOrder(null); return; }
+    const unsub = onSnapshot(doc(db, "orders", currentOrderId), (snap) => {
+      if (snap.exists()) setCurrentOrder({ id: snap.id, ...snap.data() });
+    });
+    return () => unsub();
+  }, [currentOrderId]);
+
+  useEffect(() => {
+    if (!(isAdminUrl && adminUnlocked)) return;
+    const unsub = onSnapshot(collection(db, "orders"), (snap) => {
+      setOrders(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    });
+    return () => unsub();
+  }, [isAdminUrl, adminUnlocked]);
 
   function chooseDoc(key) {
     setDocType(key);
     setF(emptyForm());
     setRef("");
     setCurrentOrderId(null);
+    setCurrentOrder(null);
+    localStorage.removeItem("qd_current_order");
     setStep("build");
   }
 
-  function submitPayment() {
-    if (!ref.trim()) return;
-    const id = Date.now();
-    setOrders([...orders, {
-      id, docType, label: doc.label, price: doc.price,
-      customer: f.name || "Unnamed", ref: ref.trim(), status: "pending",
-    }]);
-    setCurrentOrderId(id);
+  async function submitPayment() {
+    if (!ref.trim() || submitting) return;
+    setSubmitting(true);
+    try {
+      const dupCheck = query(collection(db, "orders"), where("ref", "==", ref.trim()));
+      const existing = await getDocs(dupCheck);
+      if (!existing.empty) {
+        alert("This payment reference has already been used. Each reference code can only be used once — please check the code or contact WhatsApp support.");
+        setSubmitting(false);
+        return;
+      }
+      const newDoc = await addDoc(collection(db, "orders"), {
+        docType, label: doc_.label, price: doc_.price,
+        customer: f.name || "Unnamed", ref: ref.trim(), status: "pending",
+        createdAt: serverTimestamp(),
+      });
+      setCurrentOrderId(newDoc.id);
+      localStorage.setItem("qd_current_order", JSON.stringify({ id: newDoc.id, docType }));
+    } catch (err) {
+      alert("Something went wrong submitting your payment. Please try again or contact WhatsApp support.");
+    }
+    setSubmitting(false);
   }
 
-  function approve(id) {
-    setOrders(orders.map((o) => (o.id === id ? { ...o, status: "approved" } : o)));
+  async function approve(id) {
+    await updateDoc(doc(db, "orders", id), { status: "approved" });
   }
 
   if (isAdminUrl && !adminUnlocked) {
@@ -104,7 +157,7 @@ export default function App() {
         <TopBar />
         <main className="admin">
           <h2>Orders</h2>
-          <p className="lede">Check the payment reference against your MoMo/Airtel statement before approving.</p>
+          <p className="lede">Check the payment reference against your MoMo/Airtel statement before approving. Updates live across devices.</p>
           {orders.length === 0 && <p className="hint">No orders yet.</p>}
           <table className="orders">
             <thead>
@@ -156,12 +209,12 @@ export default function App() {
       <TopBar />
       <main className="layout wide">
         <section className="panel">
-          <button className="back" onClick={() => setStep("select")}>&larr; Change document type</button>
-          <p className="step">{doc.label.toUpperCase()}</p>
+          <button className="back" onClick={() => { setStep("select"); localStorage.removeItem("qd_current_order"); }}>&larr; Change document type</button>
+          <p className="step">{doc_.label.toUpperCase()}</p>
           <h2>Enter your details</h2>
           <p className="lede">Your document builds itself on the right as you type.</p>
 
-          {doc.group === "resume" && (
+          {doc_.group === "resume" && (
             <>
               <div className="template-toggle">
                 <button className={template === "classic" ? "active" : ""} onClick={() => setTemplate("classic")}>Classic</button>
@@ -186,7 +239,7 @@ export default function App() {
             </>
           )}
 
-          {doc.group === "letter" && (
+          {doc_.group === "letter" && (
             <>
               <label>Full name</label>
               <input value={f.name} onChange={update("name")} placeholder="e.g. Uwase Diane" />
@@ -203,7 +256,7 @@ export default function App() {
             </>
           )}
 
-          {doc.group === "business" && (
+          {doc_.group === "business" && (
             <>
               <label>Business name</label>
               <input value={f.businessName} onChange={update("businessName")} placeholder="e.g. Kivu Fresh Foods" />
@@ -221,24 +274,26 @@ export default function App() {
           )}
 
           <div className="price">
-            <div>{doc.label}<br /><small>One-time, no subscription</small></div>
-            <div className="amount">{doc.price} RWF</div>
+            <div>{doc_.label}<br /><small>One-time, no subscription</small></div>
+            <div className="amount">{doc_.price} RWF</div>
           </div>
 
           {!currentOrder && (
             <div className="pay-box">
               <p className="pay-instructions">
-                Send <strong>{doc.price} RWF</strong> via <strong>MTN Mobile Money</strong> or <strong>Airtel Money</strong> to
+                Send <strong>{doc_.price} RWF</strong> via <strong>MTN Mobile Money</strong> or <strong>Airtel Money</strong> to
                 <strong> {MOMO_DISPLAY}</strong>, then paste the confirmation code you received below.
               </p>
               <input value={ref} onChange={(e) => setRef(e.target.value)} placeholder="e.g. MP240912.1900.A12345" />
-              <button className="primary" onClick={submitPayment}>I've paid — submit reference</button>
+              <button className="primary" onClick={submitPayment} disabled={submitting}>
+                {submitting ? "Submitting..." : "I've paid — submit reference"}
+              </button>
             </div>
           )}
 
           {currentOrder && currentOrder.status === "pending" && (
             <div className="pay-box pending">
-              <p>Reference <strong>{currentOrder.ref}</strong> submitted. Waiting for approval — this is usually quick.</p>
+              <p>Reference <strong>{currentOrder.ref}</strong> submitted. Waiting for approval — this page updates automatically once it's approved. You can close this and come back later.</p>
             </div>
           )}
 
@@ -247,9 +302,9 @@ export default function App() {
 
         <section className="preview">
           <div className="frame">
-            <div className="toolbar"><span>LIVE PREVIEW</span>{doc.group === "resume" && <span>{template} template</span>}</div>
-            <div id="cv" className={`cv ${doc.group === "resume" ? template : ""}`}>
-              {doc.group === "resume" && (
+            <div className="toolbar"><span>LIVE PREVIEW</span>{doc_.group === "resume" && <span>{template} template</span>}</div>
+            <div id="cv" className={`cv ${doc_.group === "resume" ? template : ""}`}>
+              {doc_.group === "resume" && (
                 <>
                   <p className="cvName">{show(f.name, "Your name")}</p>
                   <p className="cvContact">{[f.phone, f.location, f.email].filter(Boolean).join(" · ") || "Phone · City · Email"}</p>
@@ -259,7 +314,7 @@ export default function App() {
                   <h3>Skills</h3><p className="block">{show(f.skills, "Your skills will appear here.")}</p>
                 </>
               )}
-              {doc.group === "letter" && (
+              {doc_.group === "letter" && (
                 <>
                   <p className="cvContact">{show(f.name, "Your name")} · {show(f.phone, "Phone")} · {show(f.email, "Email")}</p>
                   <p className="block">To: {show(f.recipient, "Recipient name / company")}</p>
@@ -268,7 +323,7 @@ export default function App() {
                   <p className="block">{show(f.body, "Your letter content will appear here.")}</p>
                 </>
               )}
-              {doc.group === "business" && (
+              {doc_.group === "business" && (
                 <>
                   <p className="cvName">{show(f.businessName, "Business name")}</p>
                   <p className="cvContact">{show(f.ownerName, "Owner")} · {show(f.phone, "Phone")} · {show(f.location, "Location")}</p>
